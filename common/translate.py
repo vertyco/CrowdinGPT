@@ -1,6 +1,7 @@
 import asyncio
 import typing as t
 
+import deepl
 import googletrans
 from aiohttp import (
     ClientConnectorError,
@@ -22,26 +23,26 @@ class Result:
 
 
 class TranslateManager:
-    async def translate(self, text: str, target_lang: str) -> t.Optional[Result]:
+    def __init__(self, deepl_key: t.Optional[str] = None):
+        self.deepl_key = deepl_key
+
+    async def translate(
+        self,
+        text: str,
+        target_lang: str,
+        formality: t.Optional[str] = None,
+    ) -> t.Optional[Result]:
         lang = self.convert(target_lang)
         if not lang:
             return
-        try:
+        res = None
+        if self.deepl_key:
+            res = await self.deepl(text, target_lang, formality)
+        if res is None:
             res = await self.google(text, target_lang)
             if res is None or res.text == text:
                 res = await self.flowery(text, target_lang)
-            return res
-        except ReadTimeout:
-            return
-
-    async def google(self, text: str, target_lang: str) -> t.Optional[Result]:
-        translator = googletrans.Translator()
-        try:
-            res = await asyncio.to_thread(translator.translate, text, target_lang)
-            result = Result(text=res.text, src=res.src, dest=res.dest)
-            return result
-        except (AttributeError, TypeError):
-            return None
+        return res
 
     @staticmethod
     def convert(language: str):
@@ -50,6 +51,32 @@ class TranslateManager:
                 language = "chinese (simplified)"
             if language.lower() == value.lower() or language.lower() == key.lower():
                 return key
+
+    async def deepl(
+        self,
+        text: str,
+        target_lang: str,
+        formality: t.Optional[str] = None,
+    ) -> t.Optional[Result]:
+        translator = deepl.Translator(self.deepl_key)
+        res = await asyncio.to_thread(
+            translator.translate_text,
+            text=text,
+            target_lang=target_lang,
+            formality=formality,
+            preserve_formatting=True,
+        )
+        result = Result(text=res.text, src=res.detected_source_lang, dest=target_lang)
+        return result
+
+    async def google(self, text: str, target_lang: str) -> t.Optional[Result]:
+        translator = googletrans.Translator()
+        try:
+            res = await asyncio.to_thread(translator.translate, text, target_lang)
+            result = Result(text=res.text, src=res.src, dest=res.dest)
+            return result
+        except (AttributeError, TypeError, ReadTimeout):
+            return None
 
     @staticmethod
     async def flowery(text: str, target_lang: str) -> t.Optional[Result]:

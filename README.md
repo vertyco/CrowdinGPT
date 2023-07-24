@@ -26,6 +26,10 @@ In addition, you have to set up the environment variables:
 ```sh
 OPENAI_KEY=YOUR_OPENAI_KEY
 CROWDIN_KEY=YOUR_CROWDIN_KEY
+
+# Optional
+AUTO = 0  # 1 for full auto, 0 asks for confirmation
+ENDPOINT_OVERRIDE = "http://localhost:8000/v1"  # For self-hosted LLMs
 ```
 
 ## Running the Script

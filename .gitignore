@@ -163,6 +163,7 @@ build.txt
 scratch.py
 *.bin
 scratches/
+data/
 build.py
 *.json
 *.txt

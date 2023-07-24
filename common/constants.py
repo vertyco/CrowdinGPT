@@ -9,6 +9,11 @@ TRANSLATE = {
                 "type": "string",
                 "description": "the target language to translate to",
             },
+            "formatlity": {
+                "type": "string",
+                "enum": ["less", "more"],
+                "description": "controls whether translations should lean toward informal (less) or formal language (more)",
+            },
         },
         "required": ["message", "to_language"],
     },

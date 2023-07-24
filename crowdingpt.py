@@ -16,8 +16,8 @@ from dotenv import load_dotenv
 from openai.error import APIConnectionError, RateLimitError, ServiceUnavailableError
 from pydantic import BaseModel
 
-from constants import PRICES, TRANSLATE
-from translate import TranslateManager
+from common.constants import PRICES, TRANSLATE
+from common.translate import TranslateManager
 
 # Load .env file
 load_dotenv()
@@ -26,6 +26,8 @@ load_dotenv()
 CROWDIN_API_KEY = os.environ.get("CROWDIN_KEY")
 openai.api_key = os.environ.get("OPENAI_KEY")
 MODEL = os.environ.get("MODEL", "gpt-3.5-turbo")
+AUTO = int(os.environ.get("AUTO", 0))
+PRE_TRANSLATE = int(os.environ.get("PRE_TRANSLATE", 0))
 
 # Endpoint override
 if override := os.environ.get("ENDPOINT_OVERRIDE"):
@@ -34,44 +36,34 @@ if override := os.environ.get("ENDPOINT_OVERRIDE"):
 # Headers for Crowdin API requests
 HEADERS = {"Authorization": f"Bearer {CROWDIN_API_KEY}"}
 
-# Init crowdin client
-client = CrowdinClient(token=CROWDIN_API_KEY)
-
 # Init translator
-translator = TranslateManager()
+translator = TranslateManager(deepl_key=os.environ.get("DEEPL_KEY"))
 
 # Init colors
 init()
 
-# Init processed json, messages dir and token count json
-Path("messages").mkdir(exist_ok=True)
-processed_json = Path("processed.json")
-if not processed_json.exists():
-    processed_json.write_text("[]")
-tokens_json = Path("tokens.json")
+# Init data paths
+root_dir = Path(__file__).parent
+system_prompt_path = root_dir / "prompt"
+correction_prompt_dir = root_dir / "correction_prompts"
+data_dir = root_dir / "data"
+messages_dir = data_dir / "messages"
+tokens_json = data_dir / "tokens.json"
+processed_json = data_dir / "processed.json"
+
+# Create folders if they dont exist
+data_dir.mkdir(exist_ok=True)
+messages_dir.mkdir(exist_ok=True)
+# Create data files if they dont exist
 if not tokens_json.exists():
     tokens_json.write_text(json.dumps({"total": 0, "prompt": 0, "completion": 0}))
+if not processed_json.exists():
+    processed_json.write_text("[]")
 
-
-system_prompt = """
-You are an AI that translates text to {target_language} in Crowdin projects. Your goal is to translate sentences while preserving Python string formatting accurately.
-
-Key considerations when translating:
-- Only respond with the translated version of the source text.
-- Utilize function calls to increase accuracy.
-- Think about how the string should be translated based on the context of it being a python string.
-- Preserve the same amount of special characters like backticks, astrisks, and dashes ect...
-- Do not translate anything wrapped in '{}' as these are python string placeholders.
-- Do not introduce any new placeholders like brackets, backticks, dashes, additional spaces ect... in the translation.
-- Your translations must have the same amount of placeholder brackets and backticks as the source text.
-- Maintain the same placement of all special characters and placeholders.
-- Maintain the same spacing as the source string. The beginning and ending of the translated string should mirror the source string.
-"""
-system_prompt_path = Path("prompt.txt")
-if system_prompt_path.exists():
-    system_prompt = system_prompt_path.read_text()
-else:
-    system_prompt_path.write_text(system_prompt)
+# Prepare correctional prompts
+ACCENT_MISMATCH = (correction_prompt_dir / "accent_mismatch").read_text()
+LENGTH_DIFFERENCE = (correction_prompt_dir / "length_difference").read_text()
+PLACEHOLDER_MISMATCH = (correction_prompt_dir / "placeholder_mismatch").read_text()
 
 
 class Source(BaseModel):
@@ -159,46 +151,44 @@ def red(text: str):
     return Fore.RED + text + Fore.RESET
 
 
-def remove_duplicates(text: str):
-    lines = text.split("\n")
-    return "\n".join(list(dict.fromkeys(lines)))
-
-
 @cached(ttl=3600)
 async def translate_chat(source_text: str, target_lang: str) -> str:
+    system_prompt = system_prompt_path.read_text()
     messages = [
         {"role": "system", "content": system_prompt.strip().replace("{target_lang}", target_lang)},
         {
-            "role": "user",
+            "role": "system",
             "content": f"Translate the following text to {target_lang}",
         },
         {"role": "user", "content": source_text},
     ]
 
-    if translation := await translator.translate(source_text, target_lang):
-        pre_translated = translation.text
-        if pre_translated.strip() != source_text.strip():
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": None,
-                    "function_call": {
+    if PRE_TRANSLATE:
+        if translation := await translator.translate(source_text, target_lang):
+            pre_translated = translation.text
+            if pre_translated.strip() != source_text.strip():
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "function_call": {
+                            "name": "get_translation",
+                            "arguments": json.dumps(
+                                {"message": source_text, "to_language": target_lang}
+                            ),
+                        },
+                    }
+                )
+                messages.append(
+                    {
+                        "role": "function",
                         "name": "get_translation",
-                        "arguments": json.dumps(
-                            {"message": source_text, "to_language": target_lang}
-                        ),
-                    },
-                }
-            )
-            messages.append(
-                {
-                    "role": "function",
-                    "name": "get_translation",
-                    "content": pre_translated,
-                }
-            )
+                        "content": pre_translated,
+                    }
+                )
 
     functions_called = 0
+    use_functions = True
     iterations = 0
     fails = 0
     corrections = []
@@ -212,11 +202,11 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
             reply = ""
             break
         try:
-            if functions_called > 6 or iterations > 15:
+            if functions_called > 7 or iterations > 15 or not use_functions:
                 response = await openai.ChatCompletion.acreate(
                     model=MODEL,
                     messages=messages,
-                    temperature=0,
+                    temperature=0.5,
                     presence_penalty=-0.1,
                     frequency_penalty=-0.1,
                 )
@@ -224,7 +214,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                 response = await openai.ChatCompletion.acreate(
                     model=MODEL,
                     messages=messages,
-                    temperature=0,
+                    temperature=0.5,
                     functions=[TRANSLATE],
                     presence_penalty=-0.1,
                     frequency_penalty=-0.1,
@@ -258,73 +248,30 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         message = response["choices"][0]["message"]
         reply: t.Optional[str] = message["content"]
         if reply:
-            if "{" in reply and "{" not in source_text:
+            messages.append({"role": "assistant", "content": reply})
+            source_placeholders = re.findall("{.*?}", source_text)
+            reply_placeholders = re.findall("{.*?}", reply)
+            if len(source_placeholders) != len(reply_placeholders):
                 err = "Placeholder mismatch!"
                 if err not in corrections:
                     print(err)
-                    messages.append(
-                        {
-                            "role": "system",
-                            "content": "Source text doesn't have {} in it, but translation does, revise your translation and reprint.",
-                        }
-                    )
+                    messages.append({"role": "system", "content": PLACEHOLDER_MISMATCH})
                     corrections.append(err)
                     continue
-
-            if reply.count("{") != source_text.count("{"):
-                err = "Placeholder count difference!"
-                if err not in corrections:
-                    print(err)
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": "The source text and translation need to have the same amount of curly brackets, revise your translation and reprint.",
-                        }
-                    )
-                    corrections.append(err)
-                    continue
-
             if reply.count("`") != source_text.count("`"):
                 err = "Accent count difference!"
                 if err not in corrections:
                     print(err)
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": "The source text and translation need to have the same amount backticks, revise your translation and reprint.",
-                        }
-                    )
+                    messages.append({"role": "system", "content": ACCENT_MISMATCH})
                     corrections.append(err)
                     continue
-
-            if abs(len(source_text) - len(reply)) > 40:
+            if len(reply) - len(source_text) > 40:
                 err = "Text length mismatch!"
                 if err not in corrections:
                     print(err)
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": "The difference in length between the source text and translation is greater than 40 characters, revise your translation and reprint.",
-                        }
-                    )
+                    messages.append({"role": "system", "content": LENGTH_DIFFERENCE})
                     corrections.append(err)
                     continue
-
-            source_placeholders = re.findall("{.*?}", source_text)
-            reply_placeholders = re.findall("{.*?}", reply)
-            for placeholder in source_placeholders:
-                if placeholder not in reply_placeholders:
-                    err = f"Placeholder mismatch!: {placeholder}"
-                    if err not in corrections:
-                        print(err)
-                        messages.append(
-                            {
-                                "role": "user",
-                                "content": f"placeholder {placeholder} in source text did not appear in the translation, revise your translation and reprint.",
-                            }
-                        )
-                        corrections.append(err)
-                        continue
 
             break
         if function_call := message.get("function_call"):
@@ -405,9 +352,8 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
 
             functions_called += 1
 
-    messages.append({"role": "assistant", "content": reply})
-    filename = f"dump_{round(datetime.now().timestamp())}.json"
-    Path(f"messages/{filename}").write_text(json.dumps(messages, indent=2))
+    file = messages_dir / f"dump_{round(datetime.now().timestamp())}.json"
+    file.write_text(json.dumps(messages, indent=4))
 
     usage = json.loads(tokens_json.read_text())
     usage["total"] += total_tokens
@@ -416,10 +362,6 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
     tokens_json.write_text(json.dumps(usage))
 
     # Static formatting
-    if source_text.endswith("`") and not reply.endswith("`"):
-        reply += "`"
-    if source_text.startswith("`") and not reply.startswith("`"):
-        reply = "`" + reply
     if source_text.endswith(".") and not reply.endswith("."):
         reply += "."
     if source_text.endswith("\n") and not reply.endswith("\n"):
@@ -432,8 +374,6 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         reply = " " + reply
     if source_text.endswith(" ") and not reply.endswith(" "):
         reply += " "
-
-    reply = remove_duplicates(reply)
 
     if functions_called:
         print(f"Called translate function {functions_called} time(s)")
@@ -479,9 +419,12 @@ async def needs_translation(project_id: int, string_id: int, language_id: str):
 
 
 async def main():
-    processed = json.loads(Path("processed.json").read_text())
-
-    projects = client.projects.with_fetch_all().list_projects()
+    if AUTO:
+        print("Running in mostly-auto mode")
+    else:
+        print("Running in manual mode")
+    processed = json.loads(processed_json.read_text())
+    projects = CrowdinClient(token=CROWDIN_API_KEY).projects.with_fetch_all().list_projects()
     if not projects:
         print("NO PROJECTS!")
         return
@@ -532,17 +475,31 @@ async def main():
                     print(f"{yellow(translation)}\n")
                     print("-" * 100)
 
-                    txt = "Does this look okay? Press ENTER to continue, or type 'n' to skip this translation for now\n"
+                    txt = (
+                        "Does this look okay?\n"
+                        "- Leave blank and press ENTER to upload\n"
+                        "- Type 'n' to skip\n"
+                        "- Type 'c' to make correction and upload (Use CTRL + ENTER for new line)\n"
+                        "Enter your response: "
+                    )
                     confirm_conditions = [
                         source.text.count("{") != translation.count("{"),
                         source.text.count("`") != translation.count("`"),
                         abs(len(source.text) - len(translation)) > 500,
+                        not AUTO,
                     ]
                     if any(confirm_conditions):
                         reply = input(red(txt))
                         if "n" in reply.lower():
                             print("Skipping...")
                             continue
+                        if "c" in reply.lower():
+                            translation = input(
+                                cyan("Enter the correction. Type 'cancel' to skip\n")
+                            )
+                            if translation == "cancel":
+                                print("Skipping...")
+                                continue
 
                     upload_response = await upload_translation(
                         project.id, source.id, target_lang.id, translation
@@ -557,7 +514,7 @@ async def main():
                         )
 
                 processed.append(key)
-                Path("processed.json").write_text(json.dumps(processed))
+                processed_json.write_text(json.dumps(processed))
 
 
 if __name__ == "__main__":
