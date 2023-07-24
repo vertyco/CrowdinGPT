@@ -205,8 +205,8 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     model=MODEL,
                     messages=messages,
                     temperature=0,
-                    presence_penalty=-1,
-                    frequency_penalty=-1,
+                    presence_penalty=-2,
+                    frequency_penalty=-2,
                 )
             else:
                 response = await openai.ChatCompletion.acreate(
@@ -214,8 +214,8 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     messages=messages,
                     temperature=0,
                     functions=[TRANSLATE],
-                    presence_penalty=-1,
-                    frequency_penalty=-1,
+                    presence_penalty=-2,
+                    frequency_penalty=-2,
                 )
         except ServiceUnavailableError as e:
             print(f"ServiceUnavailableError, waiting 5 seconds before trying again: {e}")
