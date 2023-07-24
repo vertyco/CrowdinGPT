@@ -485,7 +485,7 @@ async def main():
                     cost = round(input_cost + output_cost, 3)
                     print(f"Translating... (${cost} used overall)")
                     translation = await translate_chat(source.text, target_lang.name)
-                    if not translation:
+                    if not translation.strip():
                         print(
                             red(
                                 f"Failed to translate to {target_lang.name}(Skipping): {source.text}"
