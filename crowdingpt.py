@@ -69,6 +69,11 @@ Key considerations when translating:
 
 Use all available resources and your translation skills to provide the most accurate and contextually correct translations. Only respond with translated text.
 """
+system_prompt_path = Path("prompt.txt")
+if system_prompt_path.exists():
+    system_prompt = system_prompt_path.read_text()
+else:
+    system_prompt_path.write_text(system_prompt)
 
 
 class Source(BaseModel):
