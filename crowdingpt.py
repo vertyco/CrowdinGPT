@@ -236,6 +236,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         reply: t.Optional[str] = message["content"]
         if reply:
             if "{}" in reply and "{}" not in source_text:
+                print("Placeholder mismatch!")
                 messages.append(
                     {
                         "role": "system",
@@ -244,10 +245,11 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                 )
                 continue
             if reply.count("{") != source_text.count("{"):
+                print("Placeholder count difference!")
                 messages.append(
                     {
                         "role": "user",
-                        "content": "Reprint the translation and make sure it has the same amount of placeholder brackets in the translation!",
+                        "content": "The source text and translation have a different amount of placeholder brackets, correct this and reprint the translation.",
                     }
                 )
                 continue
