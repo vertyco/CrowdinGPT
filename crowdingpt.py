@@ -14,9 +14,9 @@ from colorama import Fore, init
 from crowdin_api import CrowdinClient
 from dotenv import load_dotenv
 from openai.error import APIConnectionError, RateLimitError, ServiceUnavailableError
-from pydantic import BaseModel
 
 from common.constants import PRICES, TRANSLATE
+from common.models import Project, Source, Translation
 from common.translate import TranslateManager
 
 # Load .env file
@@ -64,75 +64,6 @@ if not processed_json.exists():
 ACCENT_MISMATCH = (correction_prompt_dir / "accent_mismatch").read_text()
 LENGTH_DIFFERENCE = (correction_prompt_dir / "length_difference").read_text()
 PLACEHOLDER_MISMATCH = (correction_prompt_dir / "placeholder_mismatch").read_text()
-
-
-class Source(BaseModel):
-    id: int
-    projectId: int
-    fileId: int
-    branchId: int
-    directoryId: int
-    identifier: str
-    text: str
-    type: str
-    context: str
-    maxLength: int
-    isHidden: bool
-    isDuplicate: bool
-    masterStringId: t.Optional[str] = None
-    revision: int
-    hasPlurals: bool
-    isIcu: bool
-    labelIds: list
-    createdAt: datetime
-    updatedAt: t.Optional[datetime] = None
-
-
-class Translation(BaseModel):
-    id: int
-    text: str
-    pluralCategoryName: t.Optional[str] = None
-    user: dict
-    rating: int
-    provider: t.Optional[str] = None
-    isPreTranslated: bool
-    createdAt: datetime
-
-
-class Language(BaseModel):
-    id: str
-    name: str
-    editorCode: str
-    twoLettersCode: str
-    threeLettersCode: str
-    locale: str
-    androidCode: str
-    osxCode: str
-    osxLocale: str
-    pluralCategoryNames: t.List[str]
-    pluralRules: str
-    pluralExamples: t.List[str]
-    textDirection: str
-    dialectOf: t.Optional[str]
-
-
-class Project(BaseModel):
-    id: int
-    userId: int
-    sourceLanguageId: str
-    targetLanguageIds: t.List[str]
-    languageAccessPolicy: str
-    name: str
-    cname: t.Optional[str]
-    identifier: str
-    description: str
-    visibility: str
-    logo: t.Optional[str]
-    publicDownloads: bool
-    createdAt: datetime
-    updatedAt: datetime
-    lastActivity: datetime
-    targetLanguages: t.List[Language]
 
 
 def cyan(text: str):
@@ -438,8 +369,6 @@ async def main():
             data = await get_source_strings(project.id, offset)
             if not data["data"]:
                 break
-            # offset = data["pagination"]["offset"]
-            # limit = data["pagination"]["limit"]
             offset += 500
             sources += [entry["data"] for entry in data["data"]]
             print(f"Found {len(sources)} sources")
