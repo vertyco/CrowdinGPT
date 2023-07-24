@@ -152,24 +152,24 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                 )
         except ServiceUnavailableError as e:
             fails += 1
-            print(f"ServiceUnavailableError, waiting 5 seconds before trying again: {e}")
+            print(red(f"ServiceUnavailableError, waiting 5 seconds before trying again: {e}"))
             sleep(5)
             print("Trying again...")
             continue
         except APIConnectionError as e:
             fails += 1
-            print(f"APIConnectionError, waiting 5 seconds before trying again: {e}")
+            print(red(f"APIConnectionError, waiting 5 seconds before trying again: {e}"))
             sleep(5)
             print("Trying again...")
             continue
         except RateLimitError as e:
             fails += 1
-            print(f"Rate limted! Waiting 1 minute before retrying: {e}")
+            print(red(f"Rate limted! Waiting 1 minute before retrying: {e}"))
             sleep(60)
             continue
         except Exception as e:
             fails += 1
-            print("ERROR\n", json.dumps(messages, indent=2))
+            print(red(f"ERROR\n{json.dumps(messages, indent=2)}"))
             raise Exception(e)
 
         total_tokens += response["usage"].get("total_tokens", 0)
