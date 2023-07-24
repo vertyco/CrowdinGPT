@@ -1,0 +1,6 @@
+colorama
+crowdin-api-client
+googletrans-py
+openai
+python-dotenv
+requests
