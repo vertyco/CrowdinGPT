@@ -27,8 +27,8 @@ openai.api_key = os.environ.get("OPENAI_KEY")
 MODEL = os.environ.get("MODEL", "gpt-3.5-turbo")
 
 # Endpoint override
-# openai.api_base = "http://localhost:4891/v1"
-# openai.api_base = "http://localhost:8000/v1"
+if override := os.environ.get("OPENAI_KEY"):
+    openai.api_base = override
 
 # Headers for Crowdin API requests
 HEADERS = {"Authorization": f"Bearer {CROWDIN_API_KEY}"}
