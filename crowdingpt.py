@@ -15,7 +15,7 @@ from httpx import ReadTimeout
 from openai.error import RateLimitError, ServiceUnavailableError
 from pydantic import BaseModel
 
-from constants import TRANSLATE
+from constants import PRICES, TRANSLATE
 from translate import TranslateManager
 
 # Load .env file
@@ -27,7 +27,7 @@ openai.api_key = os.environ.get("OPENAI_KEY")
 MODEL = os.environ.get("MODEL", "gpt-3.5-turbo")
 
 # Endpoint override
-if override := os.environ.get("OPENAI_KEY"):
+if override := os.environ.get("ENDPOINT_OVERRIDE"):
     openai.api_base = override
 
 # Headers for Crowdin API requests
@@ -363,16 +363,13 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
 
     messages.append({"role": "assistant", "content": reply})
     filename = f"dump_{round(datetime.now().timestamp())}.json"
-    with open(f"messages/{filename}", "w") as f:
-        f.write(json.dumps(messages, indent=2))
+    Path(f"messages/{filename}").write_text(json.dumps(messages, indent=2))
 
-    with open("tokens.json", "r") as f:
-        usage = json.loads(f.read())
-        usage["total"] += total_tokens
-        usage["prompt"] += prompt_tokens
-        usage["completion"] += completion_tokens
-        with open("tokens.json", "w") as f:
-            f.write(json.dumps(usage))
+    usage = json.loads(tokens_json.read_text())
+    usage["total"] += total_tokens
+    usage["prompt"] += prompt_tokens
+    usage["completion"] += completion_tokens
+    tokens_json.write_text(json.dumps(usage))
 
     # Static formatting
     if source_text.endswith("`") and not reply.endswith("`"):
@@ -436,8 +433,7 @@ async def needs_translation(project_id: int, string_id: int, language_id: str):
 
 
 async def main():
-    with open("processed.json", "r") as f:
-        processed = json.loads(f.read())
+    processed = json.loads(Path("processed.json").read_text())
 
     projects = client.projects.with_fetch_all().list_projects()
     if not projects:
@@ -473,14 +469,17 @@ async def main():
                 if await needs_translation(project.id, source.id, target_lang.id):
                     print()
                     print("Translating...")
-                    # prices = PRICES[MODEL]
-
                     translation = await translate_chat(source.text, target_lang.name)
                     print("-" * 45 + "English" + "-" * 45)
                     print(f"{cyan(source.text)}\n")
                     print("-" * 45 + target_lang.name + "-" * 45)
                     print(f"{yellow(translation)}\n")
-                    print("-" * 100)
+                    usage = json.loads(tokens_json.read_text())
+                    prices = PRICES[MODEL]
+                    input_cost = (usage["prompt"] / 1000) * prices[0]
+                    output_cost = (usage["completion"] / 1000) * prices[1]
+                    cost = round(input_cost + output_cost, 3)
+                    print("-" * 45 + f"${cost} total" + "-" * 45)
 
                     txt = "Does this look okay? Press ENTER to continue, or type 'n' to skip this translation for now\n"
                     confirm_conditions = [
@@ -506,8 +505,7 @@ async def main():
                         )
 
                 processed.append(key)
-                with open("processed.json", "w") as f:
-                    f.write(json.dumps(processed))
+                Path("processed.json").write_text(json.dumps(processed))
 
 
 if __name__ == "__main__":
