@@ -13,17 +13,6 @@ TRANSLATE = {
         "required": ["message", "to_language"],
     },
 }
-REFLECT = {
-    "name": "ask_question",
-    "description": "Ask ChatGPT a question",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "question": {"type": "string"},
-        },
-        "required": ["question"],
-    },
-}
 PRICES = {
     "gpt-3.5-turbo": [0.0015, 0.002],
     "gpt-3.5-turbo-16k": [0.003, 0.004],

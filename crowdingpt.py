@@ -12,7 +12,7 @@ from colorama import Fore, init
 from crowdin_api import CrowdinClient
 from dotenv import load_dotenv
 from httpx import ReadTimeout
-from openai.error import RateLimitError, ServiceUnavailableError
+from openai.error import APIConnectionError, RateLimitError, ServiceUnavailableError
 from pydantic import BaseModel
 
 from constants import PRICES, TRANSLATE
@@ -222,6 +222,11 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
             sleep(5)
             print("Trying again...")
             continue
+        except APIConnectionError as e:
+            print(f"APIConnectionError, waiting 5 seconds before trying again: {e}")
+            sleep(5)
+            print("Trying again...")
+            continue
         except RateLimitError as e:
             print(f"Rate limted! Waiting 1 minute before retrying: {e}")
             sleep(60)
@@ -302,85 +307,61 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                 )
                 continue
 
-            if func_name == "ask_question":
-                if "question" not in params:
-                    print("Missing params for self reflect")
-                    messages.append(
-                        {
-                            "role": "function",
-                            "content": f"{func_name} requires 'question' argument",
-                            "name": func_name,
-                        }
-                    )
-                    continue
-                q_messages = [{"role": "user", "content": params["question"]}]
-                q_response = await openai.ChatCompletion.acreate(
-                    model=MODEL,
-                    messages=q_messages,
-                    temperature=0.05,
+            if "message" not in params or "to_language" not in params:
+                print("Missing params for translate")
+                messages.append(
+                    {
+                        "role": "function",
+                        "content": f"{func_name} requires 'message' and 'to_language' arguments",
+                        "name": func_name,
+                    }
                 )
-                total_tokens += q_response["usage"].get("total_tokens", 0)
-                prompt_tokens += q_response["usage"].get("prompt_tokens", 0)
-                completion_tokens += q_response["usage"].get("completion_tokens", 0)
-                answer: t.Optional[str] = q_response["choices"][0]["message"]["content"]
-                messages.append({"role": "function", "content": answer, "name": func_name})
+                continue
 
-            else:
-                if "message" not in params or "to_language" not in params:
-                    print("Missing params for translate")
-                    messages.append(
-                        {
-                            "role": "function",
-                            "content": f"{func_name} requires 'message' and 'to_language' arguments",
-                            "name": func_name,
-                        }
-                    )
-                    continue
+            lang = translator.convert(params["to_language"])
+            if not lang:
+                print(f"Invalid target language! {params['to_language']}")
+                messages.append(
+                    {
+                        "role": "function",
+                        "content": "Invalid target language!",
+                        "name": "get_translation",
+                    }
+                )
+                continue
 
-                lang = translator.convert(params["to_language"])
-                if not lang:
-                    print(f"Invalid target language! {params['to_language']}")
-                    messages.append(
-                        {
-                            "role": "function",
-                            "content": "Invalid target language!",
-                            "name": "get_translation",
-                        }
-                    )
-                    continue
-
+            try:
                 try:
-                    try:
-                        translation = await translator.translate(
-                            params["message"], params["to_language"]
-                        )
-                    except ReadTimeout:
-                        translation = None
-                    if not translation:
-                        messages.append(
-                            {
-                                "role": "function",
-                                "content": "Translation failed!",
-                                "name": "get_translation",
-                            }
-                        )
-                    else:
-                        messages.append(
-                            {
-                                "role": "function",
-                                "content": translation.text,
-                                "name": "get_translation",
-                            }
-                        )
-                except Exception as e:
-                    print(f"Exception: {e}")
+                    translation = await translator.translate(
+                        params["message"], params["to_language"]
+                    )
+                except ReadTimeout:
+                    translation = None
+                if not translation:
                     messages.append(
                         {
                             "role": "function",
-                            "content": f"Exception occured: {e}",
+                            "content": "Translation failed!",
                             "name": "get_translation",
                         }
                     )
+                else:
+                    messages.append(
+                        {
+                            "role": "function",
+                            "content": translation.text,
+                            "name": "get_translation",
+                        }
+                    )
+            except Exception as e:
+                print(f"Exception: {e}")
+                messages.append(
+                    {
+                        "role": "function",
+                        "content": f"Exception occured: {e}",
+                        "name": "get_translation",
+                    }
+                )
 
             functions_called += 1
 
