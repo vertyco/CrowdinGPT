@@ -468,18 +468,18 @@ async def main():
                 # Check if translation is needed
                 if await needs_translation(project.id, source.id, target_lang.id):
                     print()
-                    print("Translating...")
-                    translation = await translate_chat(source.text, target_lang.name)
-                    print("-" * 45 + "English" + "-" * 45)
-                    print(f"{cyan(source.text)}\n")
-                    print("-" * 45 + target_lang.name + "-" * 45)
-                    print(f"{yellow(translation)}\n")
                     usage = json.loads(tokens_json.read_text())
                     prices = PRICES[MODEL]
                     input_cost = (usage["prompt"] / 1000) * prices[0]
                     output_cost = (usage["completion"] / 1000) * prices[1]
                     cost = round(input_cost + output_cost, 3)
-                    print("-" * 45 + f"${cost} total" + "-" * 45)
+                    print(f"Translating... (${cost} used overall)")
+                    translation = await translate_chat(source.text, target_lang.name)
+                    print("-" * 45 + "English" + "-" * 45)
+                    print(f"{cyan(source.text)}\n")
+                    print("-" * 45 + target_lang.name + "-" * 45)
+                    print(f"{yellow(translation)}\n")
+                    print("-" * 100)
 
                     txt = "Does this look okay? Press ENTER to continue, or type 'n' to skip this translation for now\n"
                     confirm_conditions = [

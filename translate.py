@@ -36,7 +36,7 @@ class TranslateManager:
             res = await asyncio.to_thread(translator.translate, text, target_lang)
             result = Result(text=res.text, src=res.src, dest=res.dest)
             return result
-        except AttributeError:
+        except (AttributeError, TypeError):
             return None
 
     @staticmethod
