@@ -8,6 +8,7 @@ from aiohttp import (
     ClientSession,
     ClientTimeout,
 )
+from httpx import ReadTimeout
 
 
 class Result:
@@ -25,10 +26,13 @@ class TranslateManager:
         lang = self.convert(target_lang)
         if not lang:
             return
-        res = await self.google(text, target_lang)
-        if res is None or res.text == text:
-            res = await self.flowery(text, target_lang)
-        return res
+        try:
+            res = await self.google(text, target_lang)
+            if res is None or res.text == text:
+                res = await self.flowery(text, target_lang)
+            return res
+        except ReadTimeout:
+            return
 
     async def google(self, text: str, target_lang: str) -> t.Optional[Result]:
         translator = googletrans.Translator()

@@ -11,7 +11,6 @@ import requests
 from colorama import Fore, init
 from crowdin_api import CrowdinClient
 from dotenv import load_dotenv
-from httpx import ReadTimeout
 from openai.error import APIConnectionError, RateLimitError, ServiceUnavailableError
 from pydantic import BaseModel
 
@@ -171,31 +170,28 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         {"role": "user", "content": source_text},
     ]
 
-    try:
-        if translation := await translator.translate(source_text, target_lang):
-            pre_translated = translation.text
-            if pre_translated.strip() != source_text.strip():
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": None,
-                        "function_call": {
-                            "name": "get_translation",
-                            "arguments": json.dumps(
-                                {"message": source_text, "to_language": target_lang}
-                            ),
-                        },
-                    }
-                )
-                messages.append(
-                    {
-                        "role": "function",
+    if translation := await translator.translate(source_text, target_lang):
+        pre_translated = translation.text
+        if pre_translated.strip() != source_text.strip():
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "function_call": {
                         "name": "get_translation",
-                        "content": pre_translated,
-                    }
-                )
-    except ReadTimeout:
-        pass
+                        "arguments": json.dumps(
+                            {"message": source_text, "to_language": target_lang}
+                        ),
+                    },
+                }
+            )
+            messages.append(
+                {
+                    "role": "function",
+                    "name": "get_translation",
+                    "content": pre_translated,
+                }
+            )
 
     functions_called = 0
     fails = 0
@@ -344,12 +340,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                 continue
 
             try:
-                try:
-                    translation = await translator.translate(
-                        params["message"], params["to_language"]
-                    )
-                except ReadTimeout:
-                    translation = None
+                translation = await translator.translate(params["message"], params["to_language"])
                 if not translation:
                     messages.append(
                         {
