@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import typing as t
 from datetime import datetime
 from pathlib import Path
@@ -53,21 +54,18 @@ if not tokens_json.exists():
 
 
 system_prompt = """
-You are an AI making doing translations for a Crowdin project, your goal is to translate text to {target_lang} while preserving Python string formatting accurately. Utilize function calls to increase accuracy.
+You are an AI that translates text to {target_language} in Crowdin projects. Your goal is to translate sentences while preserving Python string formatting accurately.
 
 Key considerations when translating:
 - Only respond with the translated version of the source text.
-- If needed, break strings up into smaller parts and call the translate function for each part to help with formatting.
-- Do not translate anything wrapped in curly braces or '`'. These are placeholders/arguments and should be preserved.
-- Retain the same amount of curly braces { and astrisks * in your translations.
-- Do not introduce any new placeholders or additional spaces in the translation.
-- Ensure the translated text retains the same style and formatting as the source text. This includes special characters (like '`' and '-') which must be kept in their original places.
-- Handle lengthy texts by breaking them up into smaller, manageable parts for translation. This will make the task less cumbersome and more accurate.
+- Utilize function calls to increase accuracy.
+- Think about how the string should be translated based on the context of it being a python string.
+- Preserve the same amount of special characters like backticks, astrisks, and dashes ect...
+- Do not translate anything wrapped in '{}' as these are python string placeholders.
+- Do not introduce any new placeholders like brackets, backticks, dashes, additional spaces ect... in the translation.
+- Your translations must have the same amount of placeholder brackets and backticks as the source text.
+- Maintain the same placement of all special characters and placeholders.
 - Maintain the same spacing as the source string. The beginning and ending of the translated string should mirror the source string.
-- Avoid repetition in the translation. Each idea or concept should only be translated once.
-- It is vital that the translated string is a close resemblance to the source string while making sense in the target language.
-
-Use all available resources and your translation skills to provide the most accurate and contextually correct translations. Only respond with translated text.
 """
 system_prompt_path = Path("prompt.txt")
 if system_prompt_path.exists():
@@ -161,6 +159,11 @@ def red(text: str):
     return Fore.RED + text + Fore.RESET
 
 
+def remove_duplicates(text: str):
+    lines = text.split("\n")
+    return "\n".join(list(dict.fromkeys(lines)))
+
+
 @cached(ttl=3600)
 async def translate_chat(source_text: str, target_lang: str) -> str:
     messages = [
@@ -196,6 +199,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
             )
 
     functions_called = 0
+    iterations = 0
     fails = 0
     corrections = []
 
@@ -203,17 +207,18 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
     prompt_tokens = 0
     completion_tokens = 0
     while True:
+        iterations += 1
         if fails > 1:
             reply = ""
             break
         try:
-            if functions_called > 6:
+            if functions_called > 6 or iterations > 15:
                 response = await openai.ChatCompletion.acreate(
                     model=MODEL,
                     messages=messages,
                     temperature=0,
-                    presence_penalty=-2,
-                    frequency_penalty=-2,
+                    presence_penalty=-0.1,
+                    frequency_penalty=-0.1,
                 )
             else:
                 response = await openai.ChatCompletion.acreate(
@@ -221,8 +226,8 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     messages=messages,
                     temperature=0,
                     functions=[TRANSLATE],
-                    presence_penalty=-2,
-                    frequency_penalty=-2,
+                    presence_penalty=-0.1,
+                    frequency_penalty=-0.1,
                 )
         except ServiceUnavailableError as e:
             fails += 1
@@ -260,7 +265,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     messages.append(
                         {
                             "role": "system",
-                            "content": "Source text doesn't have {} in it, but translation does. Correct this and reprint translation.",
+                            "content": "Source text doesn't have {} in it, but translation does, revise your translation and reprint.",
                         }
                     )
                     corrections.append(err)
@@ -273,7 +278,20 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     messages.append(
                         {
                             "role": "user",
-                            "content": "The source text and translation have a different amount of placeholder brackets, correct this and reprint the translation.",
+                            "content": "The source text and translation need to have the same amount of curly brackets, revise your translation and reprint.",
+                        }
+                    )
+                    corrections.append(err)
+                    continue
+
+            if reply.count("`") != source_text.count("`"):
+                err = "Accent count difference!"
+                if err not in corrections:
+                    print(err)
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "The source text and translation need to have the same amount backticks, revise your translation and reprint.",
                         }
                     )
                     corrections.append(err)
@@ -286,18 +304,34 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     messages.append(
                         {
                             "role": "user",
-                            "content": "The difference in length between the source text and translation is greater than 40 characters, ensure this is correct and then reprint the translation.",
+                            "content": "The difference in length between the source text and translation is greater than 40 characters, revise your translation and reprint.",
                         }
                     )
                     corrections.append(err)
                     continue
+
+            source_placeholders = re.findall("{.*?}", source_text)
+            reply_placeholders = re.findall("{.*?}", reply)
+            for placeholder in source_placeholders:
+                if placeholder not in reply_placeholders:
+                    err = f"Placeholder mismatch!: {placeholder}"
+                    if err not in corrections:
+                        print(err)
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": f"placeholder {placeholder} in source text did not appear in the translation, revise your translation and reprint.",
+                            }
+                        )
+                        corrections.append(err)
+                        continue
 
             break
         if function_call := message.get("function_call"):
             messages.append(message)
             func_name = function_call["name"]
 
-            if func_name not in ["get_translation", "self_reflect"]:
+            if func_name not in ("get_translation"):
                 print(f"Invalid function called: {func_name}")
                 messages.append(
                     {"role": "system", "content": f"{func_name} is not a valid function!"}
@@ -399,6 +433,8 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
     if source_text.endswith(" ") and not reply.endswith(" "):
         reply += " "
 
+    reply = remove_duplicates(reply)
+
     if functions_called:
         print(f"Called translate function {functions_called} time(s)")
 
@@ -499,7 +535,8 @@ async def main():
                     txt = "Does this look okay? Press ENTER to continue, or type 'n' to skip this translation for now\n"
                     confirm_conditions = [
                         source.text.count("{") != translation.count("{"),
-                        # abs(len(source.text) - len(translation)) > 50,
+                        source.text.count("`") != translation.count("`"),
+                        abs(len(source.text) - len(translation)) > 500,
                     ]
                     if any(confirm_conditions):
                         reply = input(red(txt))
