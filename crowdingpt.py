@@ -57,7 +57,7 @@ You are an AI making doing translations for a Crowdin project, your goal is to t
 
 Key considerations when translating:
 - Only respond with the translated version of the source text.
-- For lengthy strings, break them up into smaller parts to help with formatting.
+- If needed, break strings up into smaller parts and call the translate function for each part to help with formatting.
 - Do not translate anything wrapped in curly braces or '`'. These are placeholders/arguments and should be preserved.
 - Retain the same amount of curly braces in your translations.
 - Do not introduce any new placeholders or additional spaces in the translation.
@@ -161,7 +161,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         {"role": "system", "content": system_prompt.strip().replace("{target_lang}", target_lang)},
         {
             "role": "user",
-            "content": f"Translate the following text to {target_lang}. If needed, break it into parts and call the translate function on each part.",
+            "content": f"Translate the following text to {target_lang}",
         },
         {"role": "user", "content": source_text},
     ]
@@ -193,6 +193,8 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         pass
 
     functions_called = 0
+    corrections = []
+
     total_tokens = 0
     prompt_tokens = 0
     completion_tokens = 0
@@ -236,23 +238,44 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         reply: t.Optional[str] = message["content"]
         if reply:
             if "{" in reply and "{" not in source_text:
-                print("Placeholder mismatch!")
-                messages.append(
-                    {
-                        "role": "system",
-                        "content": "Source text doesn't have {} in it, but translation does. Correct this and reprint translation.",
-                    }
-                )
-                continue
+                err = "Placeholder mismatch!"
+                if err not in corrections:
+                    print(err)
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": "Source text doesn't have {} in it, but translation does. Correct this and reprint translation.",
+                        }
+                    )
+                    corrections.append(err)
+                    continue
+
             if reply.count("{") != source_text.count("{"):
-                print("Placeholder count difference!")
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": "The source text and translation have a different amount of placeholder brackets, correct this and reprint the translation.",
-                    }
-                )
-                continue
+                err = "Placeholder count difference!"
+                if err not in corrections:
+                    print(err)
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "The source text and translation have a different amount of placeholder brackets, correct this and reprint the translation.",
+                        }
+                    )
+                    corrections.append(err)
+                    continue
+
+            if abs(len(source_text) - len(reply)) > 40:
+                err = "Text length mismatch!"
+                if err not in corrections:
+                    print(err)
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "The difference in length between the source text and translation is greater than 40 characters, ensure this is correct and then reprint the translation.",
+                        }
+                    )
+                    corrections.append(err)
+                    continue
+
             break
         if function_call := message.get("function_call"):
             messages.append(message)
@@ -481,9 +504,8 @@ async def main():
 
                     txt = "Does this look okay? Press ENTER to continue, or type 'n' to skip this translation for now\n"
                     confirm_conditions = [
-                        # "{" in source.text and "}" in source.text,
-                        abs(len(source.text) - len(translation))
-                        > 30,
+                        source.text.count("{") != translation.count("{"),
+                        # abs(len(source.text) - len(translation)) > 50,
                     ]
                     if any(confirm_conditions):
                         reply = input(red(txt))
