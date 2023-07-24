@@ -235,7 +235,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         message = response["choices"][0]["message"]
         reply: t.Optional[str] = message["content"]
         if reply:
-            if "{}" in reply and "{}" not in source_text:
+            if "{" in reply and "{" not in source_text:
                 print("Placeholder mismatch!")
                 messages.append(
                     {
@@ -456,8 +456,6 @@ async def main():
             print(f"Found {len(sources)} sources")
 
         for target_lang in project.targetLanguages:
-            if target_lang.name != "Croatian":
-                continue
             print(f"Doing translations for {target_lang.name}")
             for raw_source in sources:
                 source = Source.parse_obj(raw_source)
@@ -483,8 +481,9 @@ async def main():
 
                     txt = "Does this look okay? Press ENTER to continue, or type 'n' to skip this translation for now\n"
                     confirm_conditions = [
-                        "{" in source.text and "}" in source.text,
-                        abs(len(source.text) - len(translation)) > 30,
+                        # "{" in source.text and "}" in source.text,
+                        abs(len(source.text) - len(translation))
+                        > 30,
                     ]
                     if any(confirm_conditions):
                         reply = input(red(txt))
