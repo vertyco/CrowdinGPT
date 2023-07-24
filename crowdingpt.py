@@ -8,6 +8,7 @@ from time import sleep
 
 import openai
 import requests
+from aiocache import cached
 from colorama import Fore, init
 from crowdin_api import CrowdinClient
 from dotenv import load_dotenv
@@ -58,7 +59,7 @@ Key considerations when translating:
 - Only respond with the translated version of the source text.
 - If needed, break strings up into smaller parts and call the translate function for each part to help with formatting.
 - Do not translate anything wrapped in curly braces or '`'. These are placeholders/arguments and should be preserved.
-- Retain the same amount of curly braces in your translations.
+- Retain the same amount of curly braces { and astrisks * in your translations.
 - Do not introduce any new placeholders or additional spaces in the translation.
 - Ensure the translated text retains the same style and formatting as the source text. This includes special characters (like '`' and '-') which must be kept in their original places.
 - Handle lengthy texts by breaking them up into smaller, manageable parts for translation. This will make the task less cumbersome and more accurate.
@@ -160,6 +161,7 @@ def red(text: str):
     return Fore.RED + text + Fore.RESET
 
 
+@cached(ttl=3600)
 async def translate_chat(source_text: str, target_lang: str) -> str:
     messages = [
         {"role": "system", "content": system_prompt.strip().replace("{target_lang}", target_lang)},
@@ -201,7 +203,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
     prompt_tokens = 0
     completion_tokens = 0
     while True:
-        if fails > 2:
+        if fails > 1:
             reply = ""
             break
         try:

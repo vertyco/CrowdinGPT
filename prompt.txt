@@ -4,7 +4,7 @@ Key considerations when translating:
 - Only respond with the translated version of the source text.
 - If needed, break strings up into smaller parts and call the translate function for each part to help with formatting.
 - Do not translate anything wrapped in curly braces or '`'. These are placeholders/arguments and should be preserved.
-- Retain the same amount of curly braces in your translations.
+- Retain the same amount of curly braces { and astrisks * in your translations.
 - Do not introduce any new placeholders or additional spaces in the translation.
 - Ensure the translated text retains the same style and formatting as the source text. This includes special characters (like '`' and '-') which must be kept in their original places.
 - Handle lengthy texts by breaking them up into smaller, manageable parts for translation. This will make the task less cumbersome and more accurate.

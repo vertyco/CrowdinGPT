@@ -1,3 +1,4 @@
+aiocache
 colorama
 crowdin-api-client
 googletrans-py
