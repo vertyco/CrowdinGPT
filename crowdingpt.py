@@ -193,12 +193,16 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         pass
 
     functions_called = 0
+    fails = 0
     corrections = []
 
     total_tokens = 0
     prompt_tokens = 0
     completion_tokens = 0
     while True:
+        if fails > 2:
+            reply = ""
+            break
         try:
             if functions_called > 6:
                 response = await openai.ChatCompletion.acreate(
@@ -218,20 +222,24 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     frequency_penalty=-2,
                 )
         except ServiceUnavailableError as e:
+            fails += 1
             print(f"ServiceUnavailableError, waiting 5 seconds before trying again: {e}")
             sleep(5)
             print("Trying again...")
             continue
         except APIConnectionError as e:
+            fails += 1
             print(f"APIConnectionError, waiting 5 seconds before trying again: {e}")
             sleep(5)
             print("Trying again...")
             continue
         except RateLimitError as e:
+            fails += 1
             print(f"Rate limted! Waiting 1 minute before retrying: {e}")
             sleep(60)
             continue
         except Exception as e:
+            fails += 1
             print("ERROR\n", json.dumps(messages, indent=2))
             raise Exception(e)
 
@@ -477,6 +485,13 @@ async def main():
                     cost = round(input_cost + output_cost, 3)
                     print(f"Translating... (${cost} used overall)")
                     translation = await translate_chat(source.text, target_lang.name)
+                    if not translation:
+                        print(
+                            red(
+                                f"Failed to translate to {target_lang.name}(Skipping): {source.text}"
+                            )
+                        )
+                        continue
                     print("-" * 45 + "English" + "-" * 45)
                     print(f"{cyan(source.text)}\n")
                     print("-" * 45 + target_lang.name + "-" * 45)
