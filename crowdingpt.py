@@ -127,28 +127,38 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
     total_tokens = 0
     prompt_tokens = 0
     completion_tokens = 0
+
+    temperature = 0
+    presence_penalty = 0
+    frequency_penalty = 0
+
     while True:
         iterations += 1
+        if iterations > 1 and temperature < 0.6:
+            temperature += 0.1
+            presence_penalty -= 0.1
+            frequency_penalty -= 0.1
+
         if fails > 1:
             reply = ""
             break
         try:
-            if functions_called > 7 or iterations > 15 or not use_functions:
+            if functions_called > 7 or iterations > 10 or not use_functions:
                 response = await openai.ChatCompletion.acreate(
                     model=MODEL,
                     messages=messages,
-                    temperature=0.5,
-                    presence_penalty=-0.1,
-                    frequency_penalty=-0.1,
+                    temperature=temperature,
+                    presence_penalty=presence_penalty,
+                    frequency_penalty=frequency_penalty,
                 )
             else:
                 response = await openai.ChatCompletion.acreate(
                     model=MODEL,
                     messages=messages,
-                    temperature=0.5,
+                    temperature=temperature,
+                    presence_penalty=presence_penalty,
+                    frequency_penalty=frequency_penalty,
                     functions=[TRANSLATE],
-                    presence_penalty=-0.1,
-                    frequency_penalty=-0.1,
                 )
         except ServiceUnavailableError as e:
             fails += 1
