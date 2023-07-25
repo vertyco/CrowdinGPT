@@ -61,10 +61,8 @@ if not processed_json.exists():
     processed_json.write_text("[]")
 
 # Prepare correctional prompts
-ACCENT_MISMATCH = (correction_prompt_dir / "accent_mismatch").read_text()
 LENGTH_DIFFERENCE = (correction_prompt_dir / "length_difference").read_text()
 PLACEHOLDER_MISMATCH = (correction_prompt_dir / "placeholder_mismatch").read_text()
-FINAL_REVIEW = (correction_prompt_dir / "final_review").read_text()
 
 
 def cyan(text: str):
@@ -85,13 +83,13 @@ def red(text: str):
 
 @cached(ttl=3600)
 async def translate_chat(source_text: str, target_lang: str) -> str:
-    system_prompt = system_prompt_path.read_text()
+    system_prompt_raw = system_prompt_path.read_text().strip()
+    system_prompt = system_prompt_raw.replace("{target_language}", target_lang)
+
+    source_text = source_text.replace("`", "<x>")
+
     messages = [
-        {"role": "system", "content": system_prompt.strip().replace("{target_lang}", target_lang)},
-        {
-            "role": "system",
-            "content": f"Translate the following text to {target_lang}. Maintain all markdown and f-string formatting. Only return the translated text.",
-        },
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": source_text},
     ]
 
@@ -129,11 +127,9 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
     prompt_tokens = 0
     completion_tokens = 0
 
-    temperature = 1
+    temperature = 0.1
     presence_penalty = -0.1
     frequency_penalty = -0.1
-
-    final = False
 
     while True:
         iterations += 1
@@ -142,7 +138,12 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
             reply = ""
             break
         try:
-            if functions_called > 7 or iterations > 10 or not use_functions:
+            if (
+                functions_called > 7
+                or iterations > 10
+                or not use_functions
+                or MODEL.endswith("0301")
+            ):
                 response = await openai.ChatCompletion.acreate(
                     model=MODEL,
                     messages=messages,
@@ -198,13 +199,6 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     messages.append({"role": "system", "content": PLACEHOLDER_MISMATCH})
                     corrections.append(err)
                     continue
-            if reply.count("`") != source_text.count("`"):
-                err = "Accent count difference!"
-                if err not in corrections:
-                    print(err)
-                    messages.append({"role": "system", "content": ACCENT_MISMATCH})
-                    corrections.append(err)
-                    continue
             if len(reply) - len(source_text) > 40:
                 err = "Text length mismatch!"
                 if err not in corrections:
@@ -213,11 +207,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     corrections.append(err)
                     continue
 
-            if final:
-                break
-            final = True
-            messages.append({"role": "user", "content": FINAL_REVIEW})
-            continue
+            break
 
         if function_call := message.get("function_call"):
             messages.append(message)
@@ -297,6 +287,10 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
 
             functions_called += 1
 
+    files = sorted(messages_dir.iterdir(), key=lambda f: f.stat().st_mtime)
+    for f in files[:-9]:
+        f.unlink(missing_ok=True)
+
     file = messages_dir / f"dump_{round(datetime.now().timestamp())}.json"
     file.write_text(json.dumps(messages, indent=4))
 
@@ -305,6 +299,8 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
     usage["prompt"] += prompt_tokens
     usage["completion"] += completion_tokens
     tokens_json.write_text(json.dumps(usage))
+
+    reply = reply.replace("<x>", "`")
 
     # Static formatting
     if source_text.endswith(".") and not reply.endswith("."):

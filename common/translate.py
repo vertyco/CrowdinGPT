@@ -68,8 +68,13 @@ class TranslateManager:
             target_lang=target_lang,
             formality=formality,
             preserve_formatting=True,
+            ignore_tags=["<x>"],
         )
-        return Result(text=res.text, src=res.detected_source_lang, dest=target_lang)
+        return Result(
+            text=res.text,
+            src=res.detected_source_lang,
+            dest=target_lang,
+        )
 
     async def google(self, text: str, target_lang: str) -> t.Optional[Result]:
         translator = googletrans.Translator()

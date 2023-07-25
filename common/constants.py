@@ -11,7 +11,7 @@ TRANSLATE = {
             },
             "formatlity": {
                 "type": "string",
-                "enum": ["less", "more"],
+                "enum": ["less", "more", "prefer_more", "prefer_less"],
                 "description": "controls whether translations should lean toward informal (less) or formal language (more)",
             },
         },
@@ -20,6 +20,8 @@ TRANSLATE = {
 }
 PRICES = {
     "gpt-3.5-turbo": [0.0015, 0.002],
+    "gpt-3.5-turbo-0301": [0.0015, 0.002],
     "gpt-3.5-turbo-16k": [0.003, 0.004],
     "gpt-4": [0.03, 0.06],
+    "gpt-4-0301": [0.03, 0.06],
 }
