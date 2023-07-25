@@ -37,11 +37,11 @@ class TranslateManager:
             return
         res = None
         if self.deepl_key:
-            res = await self.deepl(text, target_lang, formality)
+            res = await self.deepl(text, lang, formality)
         if res is None:
-            res = await self.google(text, target_lang)
+            res = await self.google(text, lang)
             if res is None or res.text == text:
-                res = await self.flowery(text, target_lang)
+                res = await self.flowery(text, lang)
         return res
 
     @staticmethod
@@ -66,15 +66,13 @@ class TranslateManager:
             formality=formality,
             preserve_formatting=True,
         )
-        result = Result(text=res.text, src=res.detected_source_lang, dest=target_lang)
-        return result
+        return Result(text=res.text, src=res.detected_source_lang, dest=target_lang)
 
     async def google(self, text: str, target_lang: str) -> t.Optional[Result]:
         translator = googletrans.Translator()
         try:
             res = await asyncio.to_thread(translator.translate, text, target_lang)
-            result = Result(text=res.text, src=res.src, dest=res.dest)
-            return result
+            return Result(text=res.text, src=res.src, dest=res.dest)
         except (AttributeError, TypeError, ReadTimeout):
             return None
 
@@ -82,17 +80,16 @@ class TranslateManager:
     async def flowery(text: str, target_lang: str) -> t.Optional[Result]:
         endpoint = "https://api.flowery.pw/v1/translation/translate"
         params = {"text": text, "result_language_code": target_lang}
-        timeout = ClientTimeout(total=6)
+        timeout = ClientTimeout(total=10)
         try:
             async with ClientSession(timeout=timeout) as session:
                 async with session.get(url=endpoint, params=params) as res:
                     if res.status == 200:
                         data = await res.json()
-                        result = Result(
+                        return Result(
                             text=data["text"],
                             src=data["language"]["original"],
                             dest=data["language"]["result"],
                         )
-                        return result
         except (ClientResponseError, ClientConnectorError):
             return None

@@ -134,10 +134,12 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
 
     while True:
         iterations += 1
-        if iterations > 1 and temperature < 0.6:
-            temperature += 0.1
-            presence_penalty -= 0.1
-            frequency_penalty -= 0.1
+        if iterations > 1:
+            if temperature < 0.6:
+                temperature += 0.1
+            if presence_penalty > -0.5:
+                presence_penalty -= 0.1
+                frequency_penalty -= 0.1
 
         if fails > 1:
             reply = ""
