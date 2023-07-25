@@ -370,8 +370,10 @@ async def needs_translation(project_id: int, string_id: int, language_id: str):
 
 
 async def main():
-    if AUTO:
+    if AUTO == 1:
         print("Running in mostly-auto mode")
+    elif AUTO == 2:
+        print("Running in full-auto mode")
     else:
         print("Running in manual mode")
     processed = json.loads(processed_json.read_text())

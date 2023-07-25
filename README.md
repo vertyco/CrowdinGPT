@@ -28,7 +28,7 @@ OPENAI_KEY=YOUR_OPENAI_KEY
 CROWDIN_KEY=YOUR_CROWDIN_KEY
 
 # Optional
-AUTO = 0  # Enables full automation when set to 1, requires confirmation when set to 0.
+AUTO = 0  # Enables semi automation when set to 1, and full auto when set to 2, requires confirmation when set to 0.
 ENDPOINT_OVERRIDE = "http://localhost:8000/v1"  # Useful for self-hosted models
 
 # Additional Optional Keys
@@ -47,7 +47,13 @@ python crowdingpt.py
 
 ## How It Works
 
-The script first retrieves all the strings of a project from the Crowdin platform. Then, it translates each string that does not already have a translation in the target language. The translation process respects the formatting and placeholders such as `{}` and ``` of the original string. The script also breaks down lengthy strings into smaller parts for translation to help with formatting.
+The script first retrieves all the strings of a project from the Crowdin platform. Then, it translates each string that does not already have a translation in the target language. The translation process respects the formatting and placeholders of the original string as much as it can. The script also replaces backticks with `<x>` placeholders since GPT does a better job of keeping track of them positionally.
+
+## Notes/Tips
+
+- The script will keep the last 10 message transcript dumps in the `messages` dir that is created at runtime for debug purposes.
+- Some lanaguages do better with `PRE_TRANSLATE` enabled, and some do better letting the model call it as needed.
+- Setting `AUTO` to 2 in your .env file will put it into full auto mode, which will auto-skip suspicious translations rather than prompting the user.
 
 ## Contributions
 
