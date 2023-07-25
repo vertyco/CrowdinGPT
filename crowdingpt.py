@@ -64,6 +64,7 @@ if not processed_json.exists():
 ACCENT_MISMATCH = (correction_prompt_dir / "accent_mismatch").read_text()
 LENGTH_DIFFERENCE = (correction_prompt_dir / "length_difference").read_text()
 PLACEHOLDER_MISMATCH = (correction_prompt_dir / "placeholder_mismatch").read_text()
+FINAL_REVIEW = (correction_prompt_dir / "final_review").read_text()
 
 
 def cyan(text: str):
@@ -89,7 +90,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         {"role": "system", "content": system_prompt.strip().replace("{target_lang}", target_lang)},
         {
             "role": "system",
-            "content": f"Translate the following text to {target_lang}",
+            "content": f"Translate the following text to {target_lang}. Maintain all markdown and f-string formatting. Only return the translated text.",
         },
         {"role": "user", "content": source_text},
     ]
@@ -128,18 +129,14 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
     prompt_tokens = 0
     completion_tokens = 0
 
-    temperature = 0
-    presence_penalty = 0
-    frequency_penalty = 0
+    temperature = 1
+    presence_penalty = -0.1
+    frequency_penalty = -0.1
+
+    final = False
 
     while True:
         iterations += 1
-        if iterations > 1:
-            if temperature < 0.6:
-                temperature += 0.1
-            if presence_penalty > -0.5:
-                presence_penalty -= 0.1
-                frequency_penalty -= 0.1
 
         if fails > 1:
             reply = ""
@@ -216,7 +213,12 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                     corrections.append(err)
                     continue
 
-            break
+            if final:
+                break
+            final = True
+            messages.append({"role": "user", "content": FINAL_REVIEW})
+            continue
+
         if function_call := message.get("function_call"):
             messages.append(message)
             func_name = function_call["name"]
@@ -354,6 +356,9 @@ async def needs_translation(project_id: int, string_id: int, language_id: str):
         params=params,
     )
     translations = response.json()
+    if "data" not in translations:
+        print(red(f"Crowdin translation check error: {translations}"))
+        return False
     if not translations["data"]:
         return True
     if not translations["data"][0]["data"]:
@@ -388,7 +393,7 @@ async def main():
             print(f"Found {len(sources)} sources")
 
         for target_lang in project.targetLanguages:
-            print(f"Doing translations for {target_lang.name}")
+            print(green(f"Doing translations for {target_lang.name}"))
             for raw_source in sources:
                 source = Source.parse_obj(raw_source)
                 key = f"{project.id}{source.id}{target_lang.id}"

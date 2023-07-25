@@ -1,0 +1,7 @@
+Please review your translation. Be mindful of the following:
+
+- If the get_translate function stripped any backticks ` make sure to add them back in the same spot, but don't add any backticks that weren't in the source text.
+- Make sure your translation has the same amount of f-string placeholder brackets if the source text has them.
+- Make sure all markdown formatting and style is the same in your translation.
+
+Print out only your revised translation of the souce text.

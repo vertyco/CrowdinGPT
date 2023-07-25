@@ -58,7 +58,10 @@ class TranslateManager:
         target_lang: str,
         formality: t.Optional[str] = None,
     ) -> t.Optional[Result]:
-        translator = deepl.Translator(self.deepl_key)
+        translator = deepl.Translator(self.deepl_key, send_platform_info=False)
+        usage = await asyncio.to_thread(translator.get_usage)
+        if usage.any_limit_reached:
+            return None
         res = await asyncio.to_thread(
             translator.translate_text,
             text=text,
