@@ -32,7 +32,7 @@ class TranslateManager:
         target_lang: str,
         formality: t.Optional[str] = None,
     ) -> t.Optional[Result]:
-        lang = self.convert(target_lang)
+        lang = await asyncio.to_thread(self.convert, target_lang)
         if not lang:
             return
         res = None
@@ -44,11 +44,24 @@ class TranslateManager:
                 res = await self.flowery(text, lang)
         return res
 
-    @staticmethod
-    def convert(language: str):
+    def convert(self, language: str) -> t.Optional[str]:
+        if language.lower() == "chinese":
+            language = "chinese (simplified)"
+        elif language.lower() == "pt":
+            language = "PT-PT"
+        elif language.lower() == "portuguese":
+            language = "PT-PT"
+
+        if self.deepl_key:
+            translator = deepl.Translator(self.deepl_key, send_platform_info=False)
+            for lang_obj in translator.get_target_languages():
+                if (
+                    language.lower() == lang_obj.name.lower()
+                    or language.lower() == lang_obj.code.lower()
+                ):
+                    return lang_obj.code
+
         for key, value in googletrans.LANGUAGES.items():
-            if language == "chinese":
-                language = "chinese (simplified)"
             if language.lower() == value.lower() or language.lower() == key.lower():
                 return key
 
@@ -68,7 +81,6 @@ class TranslateManager:
             target_lang=target_lang,
             formality=formality,
             preserve_formatting=True,
-            ignore_tags=["<x>"],
         )
         return Result(
             text=res.text,

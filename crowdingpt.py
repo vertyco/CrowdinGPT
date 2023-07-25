@@ -13,7 +13,12 @@ from aiocache import cached
 from colorama import Fore, init
 from crowdin_api import CrowdinClient
 from dotenv import load_dotenv
-from openai.error import APIConnectionError, RateLimitError, ServiceUnavailableError
+from openai.error import (
+    APIConnectionError,
+    APIError,
+    RateLimitError,
+    ServiceUnavailableError,
+)
 
 from common.constants import PRICES, TRANSLATE
 from common.models import Project, Source, Translation
@@ -90,7 +95,7 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": source_text},
+        {"role": "user", "content": source_text, "name": "source_text"},
     ]
 
     if PRE_TRANSLATE:
@@ -166,9 +171,9 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
             sleep(5)
             print("Trying again...")
             continue
-        except APIConnectionError as e:
+        except (APIConnectionError, APIError) as e:
             fails += 1
-            print(red(f"APIConnectionError, waiting 5 seconds before trying again: {e}"))
+            print(red(f"APIConnectionError/APIError, waiting 5 seconds before trying again: {e}"))
             sleep(5)
             print("Trying again...")
             continue
@@ -196,14 +201,14 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
                 err = "Placeholder mismatch!"
                 if err not in corrections:
                     print(err)
-                    messages.append({"role": "system", "content": PLACEHOLDER_MISMATCH})
+                    messages.append({"role": "user", "content": PLACEHOLDER_MISMATCH})
                     corrections.append(err)
                     continue
             if len(reply) - len(source_text) > 40:
                 err = "Text length mismatch!"
                 if err not in corrections:
                     print(err)
-                    messages.append({"role": "system", "content": LENGTH_DIFFERENCE})
+                    messages.append({"role": "user", "content": LENGTH_DIFFERENCE})
                     corrections.append(err)
                     continue
 
@@ -426,13 +431,16 @@ async def main():
                         "- Type 'c' to make correction and upload (Use CTRL + ENTER for new line)\n"
                         "Enter your response: "
                     )
-                    confirm_conditions = [
-                        source.text.count("{") != translation.count("{"),
-                        source.text.count("`") != translation.count("`"),
-                        abs(len(source.text) - len(translation)) > 500,
-                        not AUTO,
-                    ]
-                    if any(confirm_conditions):
+                    review = False
+                    if source.text.count("{") != translation.count("{"):
+                        print("bracket mismatch")
+                        review = True
+                    if source.text.count("`") != translation.count("`"):
+                        print("backtick mismatch")
+                        review = True
+                    if not AUTO:
+                        review = True
+                    if review:
                         if AUTO == 2:
                             print(red("Auto skipping..."))
                             continue
