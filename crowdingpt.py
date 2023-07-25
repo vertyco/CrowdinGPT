@@ -313,6 +313,8 @@ async def translate_chat(source_text: str, target_lang: str) -> str:
         reply = "\n" + reply
     if not source_text.endswith(".") and reply.endswith("."):
         reply = reply.rstrip(".")
+    if source_text.startswith("{}\n") and not reply.startswith("{}\n"):
+        reply = "{}\n" + reply
     if source_text.startswith(" ") and not reply.startswith(" "):
         reply = " " + reply
     if source_text.endswith(" ") and not reply.endswith(" "):
@@ -430,6 +432,9 @@ async def main():
                         not AUTO,
                     ]
                     if any(confirm_conditions):
+                        if AUTO == 2:
+                            print(red("Auto skipping..."))
+                            continue
                         reply = input(red(txt))
                         if "n" in reply.lower():
                             print("Skipping...")
