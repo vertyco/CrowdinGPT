@@ -27,14 +27,13 @@ You will also need to set up the environment variables. Do the following:
 OPENAI_KEY=YOUR_OPENAI_KEY
 CROWDIN_KEY=YOUR_CROWDIN_KEY
 
-# Optional
+# Optional Keys
 AUTO = 0  # Enables semi automation when set to 1, and full auto when set to 2, requires confirmation when set to 0.
 ENDPOINT_OVERRIDE = "http://localhost:8000/v1"  # Useful for self-hosted models
-
-# Additional Optional Keys
 DEEPL_KEY = YOUR_DEEPL_KEY  # Insert your DeepL key if available
 MODEL = "gpt-3.5-turbo"  # Specify the GPT model to use, defaults to "gpt-3.5-turbo" if not provided
 PRE_TRANSLATE = 1  # Set to 1 to enable pre-translation, 0 to disable. Disabled by default.
+PROCESS_QA = 0  # Set to 1 to enable processing translations with QA issues with GPT
 ```
 
 ## Running the Script
