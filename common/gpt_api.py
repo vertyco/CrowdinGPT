@@ -37,23 +37,34 @@ def static_processing(source: str, dest: str) -> str:
         dest = "\n" + dest
     if not source.endswith(".") and dest.endswith("."):
         dest = dest.rstrip(".")
-    if source.endswith(" " * 8) and not dest.endswith(" " * 8):
-        dest += " " * 8
+    if source.endswith("!") and not dest.endswith("!"):
+        dest += "!"
+    for idx in range(20):
+        if source.endswith(" " * idx) and not dest.endswith(" " * idx):
+            dest += " " * idx
+        if not source.endswith(" " * idx) and dest.endswith(" " * idx):
+            dest = dest.rstrip(" " * idx)
 
     return dest
 
 
 @cached(ttl=120)
-async def call_openai(messages: t.List[dict], use_functions: bool):
+async def call_openai(
+    messages: t.List[dict],
+    use_functions: bool,
+    temperature: float = 0.1,
+    presence_penalty: float = -0.1,
+    frequency_penalty: float = -0.1,
+):
     model = os.environ.get("MODEL", "gpt-3.5-turbo")
     kwargs = {
         "api_key": os.environ.get("OPENAI_KEY"),
         "api_base": os.environ.get("ENDPOINT_OVERRIDE"),
         "model": model,
         "messages": messages,
-        "temperature": 0.1,
-        "presence_penalty": -0.1,
-        "frequency_penalty": -0.1,
+        "temperature": temperature,
+        "presence_penalty": presence_penalty,
+        "frequency_penalty": frequency_penalty,
     }
     if use_functions:
         kwargs["functions"] = [TRANSLATE]
@@ -87,7 +98,7 @@ async def revise_translation(
             reply = ""
             break
         try:
-            response = await call_openai(messages, use_functions=False)
+            response = await call_openai(messages, use_functions=False, temperature=0.5)
         except ServiceUnavailableError as e:
             fails += 1
             print(red(f"ServiceUnavailableError, waiting 5 seconds before trying again: {e}"))

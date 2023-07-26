@@ -78,6 +78,7 @@ async def process_translations():
 
                 print()
                 print(f"{target_lang.name} QA Issue: {red(issue.validationDescription)}")
+                print(f"${get_cost()} used overall")
                 print(issue.text)
                 print("-" * 45 + " Original " + "-" * 45)
                 print(cyan(source_string.text))
