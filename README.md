@@ -53,6 +53,7 @@ The script first retrieves all the strings of a project from the Crowdin platfor
 - The script will keep the last 10 message transcript dumps in the `messages` dir that is created at runtime for debug purposes.
 - Some lanaguages do better with `PRE_TRANSLATE` enabled, and some do better letting the model call it as needed.
 - Setting `AUTO` to 2 in your .env file will put it into full auto mode, which will auto-skip suspicious translations rather than prompting the user.
+- The QA processing logic is a WIP, PRs are welcome.
 
 ## Contributions
 

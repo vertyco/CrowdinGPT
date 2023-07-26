@@ -69,7 +69,7 @@ class CrowdinAPI:
                 data = await res.json()
                 if res.status == 201:
                     print("Translation uploaded successfully!")
-                elif res.status != 400:
+                else:
                     print(f"Upload error (status {res.status}): {data}")
                 return data
 

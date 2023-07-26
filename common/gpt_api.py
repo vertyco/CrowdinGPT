@@ -31,15 +31,15 @@ PLACEHOLDER_MISMATCH = (correction_prompt_dir / "placeholder_mismatch").read_tex
 
 
 def static_processing(source: str, dest: str) -> str:
-    if source.endswith("\n") and not dest.endswith("\n"):
-        dest += "\n"
-    if source.startswith("\n") and not dest.startswith("\n"):
-        dest = "\n" + dest
     if not source.endswith(".") and dest.endswith("."):
         dest = dest.rstrip(".")
     if source.endswith("!") and not dest.endswith("!"):
         dest += "!"
-    for idx in range(20):
+    for idx in range(20, 1, -1):
+        if source.endswith("\n" * idx) and not dest.endswith("\n" * idx):
+            dest += "\n" * idx
+        if source.startswith("\n" * idx) and not dest.startswith("\n" * idx):
+            dest = "\n" * idx + dest
         if source.endswith(" " * idx) and not dest.endswith(" " * idx):
             dest += " " * idx
         if not source.endswith(" " * idx) and dest.endswith(" " * idx):
@@ -88,9 +88,6 @@ async def revise_translation(
         {"role": "user", "content": issue + addon},
     ]
 
-    total_tokens = 0
-    prompt_tokens = 0
-    completion_tokens = 0
     fails = 0
 
     while True:
@@ -121,9 +118,15 @@ async def revise_translation(
             print(red(f"ERROR\n{json.dumps(messages, indent=2)}"))
             raise Exception(e)
 
-        total_tokens += response["usage"].get("total_tokens", 0)
-        prompt_tokens += response["usage"].get("prompt_tokens", 0)
-        completion_tokens += response["usage"].get("completion_tokens", 0)
+        total_tokens = response["usage"].get("total_tokens", 0)
+        prompt_tokens = response["usage"].get("prompt_tokens", 0)
+        completion_tokens = response["usage"].get("completion_tokens", 0)
+
+        usage = json.loads(tokens_json.read_text())
+        usage["total"] += total_tokens
+        usage["prompt"] += prompt_tokens
+        usage["completion"] += completion_tokens
+        tokens_json.write_text(json.dumps(usage))
 
         message = response["choices"][0]["message"]
         messages.append(message)
@@ -131,13 +134,14 @@ async def revise_translation(
         reply: t.Optional[str] = message["content"]
         reply = static_processing(source_string.text, reply)
 
-        if reply == translation.text:
+        if reply.strip() == translation.text.strip():
             return
-
+        print("uploading...")
         response = await client.upload_translation(
             project.id, source_string.id, target_lang.id, reply
         )
-
+        if not response:
+            return
         errors = response.get("errors")
         if not errors:
             break
@@ -145,6 +149,7 @@ async def revise_translation(
         if "An identical translation" in error:
             return
         messages.append({"role": "user", "content": error + addon})
+        fails += 1
 
     files = sorted(revisions_dir.iterdir(), key=lambda f: f.stat().st_mtime)
     for f in files[:-9]:
