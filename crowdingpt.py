@@ -60,19 +60,33 @@ async def process_translations():
                 if not translation:
                     return
 
+                if source_string.text == translation.text:
+                    continue
+
                 target_lang = mapped_langs[issue.languageId]
+
                 revision = await revise_translation(
-                    source_string.text, translation.text, target_lang.name, issue.text
+                    client,
+                    project,
+                    source_string,
+                    translation,
+                    target_lang,
+                    issue.text,
                 )
-                await client.upload_translation(
-                    project.id, source_string.id, target_lang.id, revision
-                )
+                if not revision:
+                    continue
+
                 print()
-                print(f"QA Issue: {red(issue.validationDescription)}")
+                print(f"{target_lang.name} QA Issue: {red(issue.validationDescription)}")
                 print(issue.text)
+                print("-" * 45 + " Original " + "-" * 45)
                 print(cyan(source_string.text))
-                print("-" * 45 + target_lang.name + "-" * 45)
-                print(f"{yellow(revision)}\n")
+                print("-" * 44 + " Translation " + "-" * 44)
+                print(red(translation.text))
+                print("-" * 45 + " Revision " + "-" * 45)
+                print(f"{yellow(revision)}")
+                print("-" * 100)
+                print()
 
         else:
             print(f"Found {len(strings)} sources")
@@ -90,12 +104,9 @@ async def process_translations():
                         translation = await translate_string(
                             translator, source_string.text, target_lang.name
                         )
+                        txt = f"Failed to translate to {target_lang.name} (Skipping): {source_string.text}"
                         if not translation.strip():
-                            print(
-                                red(
-                                    f"Failed to translate to {target_lang.name}(Skipping): {source_string.text}"
-                                )
-                            )
+                            print(red(txt))
                             continue
                         print("-" * 45 + "English" + "-" * 45)
                         print(f"{cyan(source_string.text)}\n")

@@ -61,7 +61,7 @@ class CrowdinAPI:
         string_id: int,
         language_id: int,
         text: str,
-    ) -> None:
+    ) -> dict:
         url = f"{self.base_url}/projects/{project_id}/translations"
         payload = {"stringId": string_id, "languageId": language_id, "text": text}
         async with ClientSession(timeout=self.timeout, headers=self.headers) as session:
@@ -69,8 +69,9 @@ class CrowdinAPI:
                 data = await res.json()
                 if res.status == 201:
                     print("Translation uploaded successfully!")
-                else:
+                elif res.status != 400:
                     print(f"Upload error (status {res.status}): {data}")
+                return data
 
     async def needs_translation(
         self,

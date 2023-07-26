@@ -15,6 +15,7 @@ from openai.error import (
 )
 
 from common.constants import TRANSLATE, red
+from common.crowdin_api import CrowdinAPI
 from common.dirs import (
     correction_prompt_dir,
     messages_dir,
@@ -22,10 +23,24 @@ from common.dirs import (
     system_prompt_path,
     tokens_json,
 )
+from common.models import Language, Project, String, Translation
 from common.translate_api import TranslateManager
 
 LENGTH_DIFFERENCE = (correction_prompt_dir / "length_difference").read_text()
 PLACEHOLDER_MISMATCH = (correction_prompt_dir / "placeholder_mismatch").read_text()
+
+
+def static_processing(source: str, dest: str) -> str:
+    if source.endswith("\n") and not dest.endswith("\n"):
+        dest += "\n"
+    if source.startswith("\n") and not dest.startswith("\n"):
+        dest = "\n" + dest
+    if not source.endswith(".") and dest.endswith("."):
+        dest = dest.rstrip(".")
+    if source.endswith(" " * 8) and not dest.endswith(" " * 8):
+        dest += " " * 8
+
+    return dest
 
 
 @cached(ttl=120)
@@ -45,30 +60,80 @@ async def call_openai(messages: t.List[dict], use_functions: bool):
     return await openai.ChatCompletion.acreate(**kwargs)
 
 
-async def revise_translation(source_text: str, translation: str, target_lang: str, issue: str):
-    system_prompt_raw = system_prompt_path.read_text().strip()
-    system_prompt = system_prompt_raw.replace("{target_language}", target_lang)
-
-    source_text = source_text.replace("`", "<x>")
+async def revise_translation(
+    client: CrowdinAPI,
+    project: Project,
+    source_string: String,
+    translation: Translation,
+    target_lang: Language,
+    issue: str,
+) -> t.Optional[str]:
     addon = "\nRevise your translation and return only the updated version"
+
     messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": source_text},
-        {"role": "assistant", "content": translation},
+        {"role": "user", "content": f"Translate the following text to {target_lang.name}"},
+        {"role": "user", "content": source_string.text},
+        {"role": "assistant", "content": translation.text},
         {"role": "user", "content": issue + addon},
     ]
+
     total_tokens = 0
     prompt_tokens = 0
     completion_tokens = 0
+    fails = 0
 
-    response = await call_openai(messages, use_functions=False)
+    while True:
+        if fails > 1:
+            reply = ""
+            break
+        try:
+            response = await call_openai(messages, use_functions=False)
+        except ServiceUnavailableError as e:
+            fails += 1
+            print(red(f"ServiceUnavailableError, waiting 5 seconds before trying again: {e}"))
+            sleep(5)
+            print("Trying again...")
+            continue
+        except (APIConnectionError, APIError) as e:
+            fails += 1
+            print(red(f"APIConnectionError/APIError, waiting 5 seconds before trying again: {e}"))
+            sleep(5)
+            print("Trying again...")
+            continue
+        except RateLimitError as e:
+            fails += 1
+            print(red(f"Rate limted! Waiting 1 minute before retrying: {e}"))
+            sleep(60)
+            continue
+        except Exception as e:
+            fails += 1
+            print(red(f"ERROR\n{json.dumps(messages, indent=2)}"))
+            raise Exception(e)
 
-    total_tokens += response["usage"].get("total_tokens", 0)
-    prompt_tokens += response["usage"].get("prompt_tokens", 0)
-    completion_tokens += response["usage"].get("completion_tokens", 0)
+        total_tokens += response["usage"].get("total_tokens", 0)
+        prompt_tokens += response["usage"].get("prompt_tokens", 0)
+        completion_tokens += response["usage"].get("completion_tokens", 0)
 
-    message = response["choices"][0]["message"]
-    messages.append(message)
+        message = response["choices"][0]["message"]
+        messages.append(message)
+
+        reply: t.Optional[str] = message["content"]
+        reply = static_processing(source_string.text, reply)
+
+        if reply == translation.text:
+            return
+
+        response = await client.upload_translation(
+            project.id, source_string.id, target_lang.id, reply
+        )
+
+        errors = response.get("errors")
+        if not errors:
+            break
+        error = errors[0]["error"]["errors"][0]["message"]
+        if "An identical translation" in error:
+            return
+        messages.append({"role": "user", "content": error + addon})
 
     files = sorted(revisions_dir.iterdir(), key=lambda f: f.stat().st_mtime)
     for f in files[:-9]:
@@ -77,7 +142,6 @@ async def revise_translation(source_text: str, translation: str, target_lang: st
     file = revisions_dir / f"dump_{round(datetime.now().timestamp())}.json"
     file.write_text(json.dumps(messages, indent=4))
 
-    reply: t.Optional[str] = message["content"]
     return reply
 
 
@@ -293,22 +357,7 @@ async def translate_string(
     tokens_json.write_text(json.dumps(usage))
 
     reply = reply.replace("<x>", "`")
-
-    # Static formatting
-    if source_text.endswith(".") and not reply.endswith("."):
-        reply += "."
-    if source_text.endswith("\n") and not reply.endswith("\n"):
-        reply += "\n"
-    if source_text.startswith("\n") and not reply.startswith("\n"):
-        reply = "\n" + reply
-    if not source_text.endswith(".") and reply.endswith("."):
-        reply = reply.rstrip(".")
-    if source_text.startswith("{}\n") and not reply.startswith("{}\n"):
-        reply = "{}\n" + reply
-    if source_text.startswith(" ") and not reply.startswith(" "):
-        reply = " " + reply
-    if source_text.endswith(" ") and not reply.endswith(" "):
-        reply += " "
+    reply = static_processing(source_text, reply)
 
     if functions_called:
         print(f"Called translate function {functions_called} time(s)")
