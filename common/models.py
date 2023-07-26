@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class Source(BaseModel):
+class String(BaseModel):
     id: int
     projectId: int
     fileId: int
@@ -24,6 +24,17 @@ class Source(BaseModel):
     labelIds: list
     createdAt: datetime
     updatedAt: t.Optional[datetime] = None
+
+
+class QA(BaseModel):
+    stringId: int
+    languageId: str
+    category: str
+    categoryDescription: str
+    validation: str
+    validationDescription: str
+    pluralId: int
+    text: str
 
 
 class Translation(BaseModel):

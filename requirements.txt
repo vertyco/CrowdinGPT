@@ -1,8 +1,6 @@
 aiocache
 colorama
-crowdin-api-client
 deepl
 googletrans-py
 openai
 python-dotenv
-requests

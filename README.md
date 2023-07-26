@@ -65,4 +65,4 @@ This project is meant for experimental usage and not for commercial purposes. Tr
 
 ## Contact
 
-If you encounter any issues or have any questions about this project, please open an issue on this GitHub repository.
+If you encounter any issues or have any questions about this project, please open an issue on this repo.

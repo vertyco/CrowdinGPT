@@ -1,3 +1,24 @@
+from colorama import Fore, init
+
+init()
+
+
+def cyan(text: str):
+    return Fore.CYAN + text + Fore.RESET
+
+
+def yellow(text: str):
+    return Fore.YELLOW + text + Fore.RESET
+
+
+def green(text: str):
+    return Fore.GREEN + text + Fore.RESET
+
+
+def red(text: str):
+    return Fore.RED + text + Fore.RESET
+
+
 TRANSLATE = {
     "name": "get_translation",
     "description": "Translate text to another language",
