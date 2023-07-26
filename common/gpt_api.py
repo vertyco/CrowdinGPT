@@ -18,6 +18,7 @@ from common.constants import TRANSLATE, red
 from common.dirs import (
     correction_prompt_dir,
     messages_dir,
+    revisions_dir,
     system_prompt_path,
     tokens_json,
 )
@@ -44,6 +45,42 @@ async def call_openai(messages: t.List[dict], use_functions: bool):
     return await openai.ChatCompletion.acreate(**kwargs)
 
 
+async def revise_translation(source_text: str, translation: str, target_lang: str, issue: str):
+    system_prompt_raw = system_prompt_path.read_text().strip()
+    system_prompt = system_prompt_raw.replace("{target_language}", target_lang)
+
+    source_text = source_text.replace("`", "<x>")
+    addon = "\nRevise your translation and return only the updated version"
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": source_text},
+        {"role": "assistant", "content": translation},
+        {"role": "user", "content": issue + addon},
+    ]
+    total_tokens = 0
+    prompt_tokens = 0
+    completion_tokens = 0
+
+    response = await call_openai(messages, use_functions=False)
+
+    total_tokens += response["usage"].get("total_tokens", 0)
+    prompt_tokens += response["usage"].get("prompt_tokens", 0)
+    completion_tokens += response["usage"].get("completion_tokens", 0)
+
+    message = response["choices"][0]["message"]
+    messages.append(message)
+
+    files = sorted(revisions_dir.iterdir(), key=lambda f: f.stat().st_mtime)
+    for f in files[:-9]:
+        f.unlink(missing_ok=True)
+
+    file = revisions_dir / f"dump_{round(datetime.now().timestamp())}.json"
+    file.write_text(json.dumps(messages, indent=4))
+
+    reply: t.Optional[str] = message["content"]
+    return reply
+
+
 async def translate_string(
     translator: TranslateManager,
     source_text: str,
@@ -51,7 +88,6 @@ async def translate_string(
 ) -> str:
     system_prompt_raw = system_prompt_path.read_text().strip()
     system_prompt = system_prompt_raw.replace("{target_language}", target_lang)
-    model = os.environ.get("MODEL", "gpt-3.5-turbo")
 
     source_text = source_text.replace("`", "<x>")
 
@@ -111,7 +147,7 @@ async def translate_string(
                     functions_called > 7
                     or iterations > 10
                     or not use_functions
-                    or model.endswith("0301")
+                    or os.environ.get("MODEL", "gpt-3.5-turbo").endswith("0301")
                 )
                 else True
             )

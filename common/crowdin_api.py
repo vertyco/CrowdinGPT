@@ -72,7 +72,12 @@ class CrowdinAPI:
                 else:
                     print(f"Upload error (status {res.status}): {data}")
 
-    async def needs_translation(self, project_id: int, string_id: int, language_id: str) -> bool:
+    async def needs_translation(
+        self,
+        project_id: int,
+        string_id: int,
+        language_id: str,
+    ) -> t.Optional[Translation]:
         url = f"{self.base_url}/projects/{project_id}/translations"
         params = {"stringId": string_id, "languageId": language_id}
         async with ClientSession(timeout=self.timeout, headers=self.headers) as session:
@@ -80,11 +85,9 @@ class CrowdinAPI:
                 translations = await res.json()
                 if "data" not in translations:
                     print(f"Crowdin translation check error: {translations}")
-                    return False
+                    return
                 if not translations["data"]:
-                    return True
+                    return
                 if not translations["data"][0]["data"]:
-                    return True
-                data = translations["data"][0]["data"]
-                Translation.parse_obj(data)
-                return False
+                    return
+                return Translation.parse_obj(translations["data"][0]["data"])
