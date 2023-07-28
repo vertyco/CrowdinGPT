@@ -1,5 +1,4 @@
 import json
-import re
 import typing as t
 from datetime import datetime
 from time import sleep
@@ -40,19 +39,36 @@ ADDON = "\nRevise your translation and return only the updated version"
 
 
 def static_processing(source: str, dest: str) -> str:
-    if not source.endswith(".") and dest.endswith("."):
+    """Help GPT a bit with some common static fixes"""
+    # Maintain ending punctuation from source
+    if source.endswith(".") and not dest.endswith("."):
+        dest += "."
+    elif not source.endswith(".") and dest.endswith("."):
         dest = dest.rstrip(".")
     if source.endswith("!") and not dest.endswith("!"):
         dest += "!"
+
+    # Maintain placeholder at the start of text
+    if source.startswith("{}\n") and not dest.startswith("{}\n"):
+        dest = "{}\n" + dest
+
+    # Count the trailing newlines in both source and destination
+    source_trailing_newlines = len(source) - len(source.rstrip("\n"))
+    dest_trailing_newlines = len(dest) - len(dest.rstrip("\n"))
+
+    # Balance the count of newlines in the destination
+    if source_trailing_newlines != dest_trailing_newlines:
+        dest = dest.rstrip("\n")  # Remove all trailing newlines
+        dest += "\n" * source_trailing_newlines  # Add the correct number of newlines
+
+    # Maintain space characters at the start and end of text
     for idx in range(20, 1, -1):
-        if source.endswith("\n" * idx) and not dest.endswith("\n" * idx):
-            dest += "\n" * idx
-        if source.startswith("\n" * idx) and not dest.startswith("\n" * idx):
-            dest = "\n" * idx + dest
-        if source.endswith(" " * idx) and not dest.endswith(" " * idx):
-            dest += " " * idx
-        if not source.endswith(" " * idx) and dest.endswith(" " * idx):
-            dest = dest.rstrip(" " * idx)
+        space_seq = " " * idx
+
+        if source.endswith(space_seq) and not dest.endswith(space_seq):
+            dest += space_seq
+        if source.startswith(space_seq) and not dest.startswith(space_seq):
+            dest = space_seq + dest
 
     return dest
 
@@ -77,9 +93,9 @@ def get_cost() -> float:
 async def call_openai(
     messages: t.List[dict],
     use_functions: bool,
-    temperature: float = 0.1,
-    presence_penalty: float = -0.1,
-    frequency_penalty: float = -0.1,
+    temperature: float = 0.0,
+    presence_penalty: float = -0.3,
+    frequency_penalty: float = -0.3,
 ):
     kwargs = {
         "api_key": OPENAI_KEY,
@@ -231,14 +247,12 @@ async def process_revision(
         print(f"Upload Error: {red(error)}")
         messages.append({"role": "user", "content": error + ADDON})
         corrections += 1
-        continue
+        file = messages_dir / f"dump_{round(datetime.now().timestamp())}.json"
+        file.write_text(json.dumps(messages, indent=4))
 
     files = sorted(messages_dir.iterdir(), key=lambda f: f.stat().st_mtime)
     for f in files[:-9]:
         f.unlink(missing_ok=True)
-
-    file = messages_dir / f"dump_{round(datetime.now().timestamp())}.json"
-    file.write_text(json.dumps(messages, indent=4))
 
     return success
 
@@ -251,17 +265,16 @@ async def process_translation(
     system_prompt_raw = system_prompt_path.read_text().strip()
     system_prompt = system_prompt_raw.replace("{target_language}", language.name)
 
-    # Replace backticks with placeholder
-    source_text = string.text.replace("`", "<x>")
-    # Replace indentation with weird symbol since gpt is weird
-    matches = re.match(r"(\s*)", source_text)
-    indentation = matches.group(0) if matches else ""
-    symbol = "§"
-    source_text = source_text.replace(indentation, symbol * len(indentation))
-
+    source_text = string.text
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": source_text, "name": "source_text"},
+        {"role": "user", "content": "Hello, how are you?"},
+        {"role": "assistant", "content": "¿Hola, cómo estás?"},
+        {"role": "user", "content": "{}\nCog Version: {}\nAuthor: {}"},
+        {"role": "assistant", "content": "{}\nVersión de Cog: {}\nAutor: {}"},
+        {"role": "user", "content": "Invalid schema!\n**Missing**\n{}"},
+        {"role": "assistant", "content": "Geçersiz şema!\n**Eksik**\n{}"},
+        {"role": "user", "content": source_text},
     ]
 
     if PRE_TRANSLATE:
@@ -317,9 +330,8 @@ async def process_translation(
 
         reply: t.Optional[str] = message["content"]
         if reply:
-            # Add placeholders back
+            reply = reply.replace(r"\n", "\n")
             reply = static_processing(string.text, reply)
-            reply = reply.replace("<x>", "`").replace(symbol, " ").replace(r"\n", "\n")
             message["content"] = reply
             messages.append(message)
 
@@ -340,18 +352,18 @@ async def process_translation(
             review = False
             if string.text.count("{") != reply.count("{"):
                 print("Bracket mismatch")
-                if corrections < 3:
+                if corrections > 3:
                     review = True
                 else:
-                    messages.append({"role": "user", "content": PLACEHOLDER_MISMATCH})
+                    messages.append({"role": "system", "content": PLACEHOLDER_MISMATCH})
                     corrections += 1
                     continue
             if string.text.count("`") != reply.count("`"):
                 print("Backtick mismatch")
-                if corrections < 3:
+                if corrections > 3:
                     review = True
                 else:
-                    messages.append({"role": "user", "content": BACKTICK_MISMATCH})
+                    messages.append({"role": "system", "content": BACKTICK_MISMATCH})
                     corrections += 1
                     continue
 
@@ -389,7 +401,7 @@ async def process_translation(
                 print("Skipping, identical translation exists")
                 break
             print(f"Upload Error: {red(error)}")
-            messages.append({"role": "user", "content": error + ADDON})
+            messages.append({"role": "system", "content": error + ADDON})
             corrections += 1
             continue
 
@@ -449,12 +461,12 @@ async def process_translation(
         messages.append({"role": "function", "content": translation, "name": "get_translation"})
         functions_called += 1
 
+        file = messages_dir / f"dump_{round(datetime.now().timestamp())}.json"
+        file.write_text(json.dumps(messages, indent=4))
+
     files = sorted(messages_dir.iterdir(), key=lambda f: f.stat().st_mtime)
     for f in files[:-9]:
         f.unlink(missing_ok=True)
-
-    file = messages_dir / f"dump_{round(datetime.now().timestamp())}.json"
-    file.write_text(json.dumps(messages, indent=4))
 
     if functions_called:
         print(f"{functions_called} functions called in total")

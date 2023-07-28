@@ -1,1 +1,1 @@
-Make sure that your translation has the same amount of placeholders ({}) as the source text, revise your translation and then provide only the updated version.
+Please fix the amount of curly brackets in your translation, then revise it and make sure not to dupliate any lines, and then return only the updated translations

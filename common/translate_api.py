@@ -74,14 +74,18 @@ class TranslateManager:
         translator = deepl.Translator(self.deepl_key, send_platform_info=False)
         usage = await asyncio.to_thread(translator.get_usage)
         if usage.any_limit_reached:
-            return None
-        res = await asyncio.to_thread(
-            translator.translate_text,
-            text=text,
-            target_lang=target_lang,
-            formality=formality,
-            preserve_formatting=True,
-        )
+            return
+        try:
+            res = await asyncio.to_thread(
+                translator.translate_text,
+                text=text,
+                target_lang=target_lang,
+                formality=formality,
+                preserve_formatting=True,
+            )
+        except deepl.exceptions.DeepLException as e:
+            print(f"Failed to translate to {target_lang}: {e}")
+            return
         return Result(
             text=res.text,
             src=res.detected_source_lang,
