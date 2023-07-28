@@ -1,6 +1,6 @@
 # Crowdin GPT Translator
 
-This project uses OpenAI's GPT models to translate strings for a Crowdin project. While doing translations, it ensures the preservation of Python string formatting and makes optimal use of function calls for the sake of accuracy.
+This project uses OpenAI's GPT models to translate strings for a Crowdin project while preserving formatting.
 
 ## Setup And Installation
 
@@ -46,7 +46,7 @@ python main.py
 
 ## How It Works
 
-The script first retrieves all the strings of a project from the Crowdin platform. Then, it translates each string that does not already have a translation in the target language. The translation process respects the formatting and placeholders of the original string as much as it can. The script also replaces backticks with `<x>` placeholders since GPT does a better job of keeping track of them positionally.
+The script first retrieves all the strings of a project from the Crowdin platform. Then, it translates each string that does not already have a translation in the target language. The translation process respects the formatting and placeholders of the original string as much as it can.
 
 ## Notes/Tips
 
@@ -61,7 +61,7 @@ Contributions to this repository are welcome. You can fork the repository and cr
 
 ## Disclaimer
 
-This project is meant for experimental usage and not for commercial purposes. Translations depend highly on the quality of the GPT model and accuracy of the Google Translate API. For official translations, consider using professional translation services.
+This project is meant for experimental usage and not for commercial purposes. For official translations, consider using professional translation services.
 
 ## Contact
 
