@@ -47,9 +47,9 @@ class TranslateManager:
     def convert(self, language: str) -> t.Optional[str]:
         if language.lower() == "chinese":
             language = "chinese (simplified)"
-        elif language.lower() == "pt":
+        elif self.deepl_key and language.lower() == "pt":
             language = "PT-PT"
-        elif language.lower() == "portuguese":
+        elif self.deepl_key and language.lower() == "portuguese":
             language = "PT-PT"
 
         if self.deepl_key:

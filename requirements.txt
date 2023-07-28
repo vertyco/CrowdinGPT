@@ -3,4 +3,5 @@ colorama
 deepl
 googletrans-py
 openai
+pydantic
 python-dotenv

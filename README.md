@@ -41,7 +41,7 @@ PROCESS_QA = 0  # Set to 1 to enable processing translations with QA issues with
 You can run the script with the following command:
 
 ```sh
-python crowdingpt.py
+python main.py
 ```
 
 ## How It Works

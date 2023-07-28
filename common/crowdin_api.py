@@ -41,6 +41,27 @@ class CrowdinAPI:
                     params["offset"] += 500
         return sources
 
+    async def get_translation(
+        self,
+        project_id: int,
+        string_id: int,
+        language_id: str,
+    ) -> t.Optional[Translation]:
+        """If translation is None, then string needs translation"""
+        url = f"{self.base_url}/projects/{project_id}/translations"
+        params = {"stringId": string_id, "languageId": language_id}
+        async with ClientSession(timeout=self.timeout, headers=self.headers) as session:
+            async with session.get(url=url, params=params) as res:
+                translations = await res.json()
+                if "data" not in translations:
+                    print(f"Crowdin translation check error: {translations}")
+                    return
+                if not translations["data"]:
+                    return
+                if not translations["data"][0]["data"]:
+                    return
+                return Translation.parse_obj(translations["data"][0]["data"])
+
     async def get_qa_issues(self, project_id: int) -> t.List[QA]:
         url = f"{self.base_url}/projects/{project_id}/qa-checks"
         params = {"offset": 0, "limit": 500}
@@ -61,34 +82,10 @@ class CrowdinAPI:
         string_id: int,
         language_id: int,
         text: str,
-    ) -> dict:
+    ) -> t.Tuple[int, dict]:
         url = f"{self.base_url}/projects/{project_id}/translations"
         payload = {"stringId": string_id, "languageId": language_id, "text": text}
         async with ClientSession(timeout=self.timeout, headers=self.headers) as session:
             async with session.post(url=url, json=payload) as res:
                 data = await res.json()
-                if res.status == 201:
-                    print("Translation uploaded successfully!")
-                else:
-                    print(f"Upload error (status {res.status}): {data}")
-                return data
-
-    async def needs_translation(
-        self,
-        project_id: int,
-        string_id: int,
-        language_id: str,
-    ) -> t.Optional[Translation]:
-        url = f"{self.base_url}/projects/{project_id}/translations"
-        params = {"stringId": string_id, "languageId": language_id}
-        async with ClientSession(timeout=self.timeout, headers=self.headers) as session:
-            async with session.get(url=url, params=params) as res:
-                translations = await res.json()
-                if "data" not in translations:
-                    print(f"Crowdin translation check error: {translations}")
-                    return
-                if not translations["data"]:
-                    return
-                if not translations["data"][0]["data"]:
-                    return
-                return Translation.parse_obj(translations["data"][0]["data"])
+                return res.status, data
